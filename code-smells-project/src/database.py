@@ -1,17 +1,42 @@
-import sqlite3
-import os
+"""Database connection management.
 
-db_connection = None
-db_path = "loja.db"
+Fixes AP-ARCH-04 (global mutable singleton connection). Connections are now
+per-request, stored on Flask's application context (`g`) and closed on teardown,
+instead of one shared module-level connection reused across threads.
+"""
+import sqlite3
+
+from flask import g
+
+from src.config.settings import Config
+
 
 def get_db():
-    global db_connection
-    if db_connection is None:
-        db_connection = sqlite3.connect(db_path, check_same_thread=False)
-        db_connection.row_factory = sqlite3.Row
-        cursor = db_connection.cursor()
+    """Return the per-request SQLite connection, creating it on first use."""
+    if "db" not in g:
+        g.db = sqlite3.connect(Config.DB_PATH, check_same_thread=False)
+        g.db.row_factory = sqlite3.Row
+    return g.db
 
-        cursor.execute("""
+
+def close_db(exception=None):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+
+def init_db(app):
+    """Create the schema and seed initial data once, at startup.
+
+    Passwords are seeded already-hashed (fixes AP-SEC-03: no plaintext creds).
+    """
+    from werkzeug.security import generate_password_hash
+
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS produtos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT,
@@ -22,18 +47,22 @@ def get_db():
                 ativo INTEGER DEFAULT 1,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cursor.execute("""
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT,
-                email TEXT,
+                email TEXT UNIQUE,
                 senha TEXT,
                 tipo TEXT DEFAULT 'cliente',
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cursor.execute("""
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS pedidos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 usuario_id INTEGER,
@@ -41,8 +70,10 @@ def get_db():
                 total REAL,
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cursor.execute("""
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS itens_pedido (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pedido_id INTEGER,
@@ -50,8 +81,9 @@ def get_db():
                 quantidade INTEGER,
                 preco_unitario REAL
             )
-        """)
-        db_connection.commit()
+            """
+        )
+        db.commit()
 
         cursor.execute("SELECT COUNT(*) FROM produtos")
         if cursor.fetchone()[0] == 0:
@@ -69,18 +101,16 @@ def get_db():
             ]
             cursor.executemany(
                 "INSERT INTO produtos (nome, descricao, preco, estoque, categoria) VALUES (?, ?, ?, ?, ?)",
-                produtos
+                produtos,
             )
-
             usuarios = [
-                ("Admin", "admin@loja.com", "admin123", "admin"),
-                ("João Silva", "joao@email.com", "123456", "cliente"),
-                ("Maria Santos", "maria@email.com", "senha123", "cliente"),
+                ("Admin", "admin@loja.com", generate_password_hash("admin123"), "admin"),
+                ("João Silva", "joao@email.com", generate_password_hash("123456"), "cliente"),
+                ("Maria Santos", "maria@email.com", generate_password_hash("senha123"), "cliente"),
             ]
             cursor.executemany(
                 "INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
-                usuarios
+                usuarios,
             )
-            db_connection.commit()
-
-    return db_connection
+            db.commit()
+        close_db()
