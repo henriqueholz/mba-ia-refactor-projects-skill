@@ -95,9 +95,20 @@ passwords, or keys.
 
 **Before**: `/admin/query` executes arbitrary body SQL; `/admin/reset-db` wipes
 tables with no auth.
-**After**: delete the arbitrary-SQL endpoint entirely. If a reset is genuinely
-needed, gate it behind auth + environment check and use fixed, safe operations —
-never client-supplied SQL.
+**After**: never execute client-supplied SQL. To keep the public route contract
+(the original path still answers instead of a bare 404), keep the route but make
+it safe:
+```python
+# controllers/system_controller.py
+def execute_query():
+    raise GoneError("Endpoint removido: execução de SQL arbitrário não é suportada")  # 410
+
+def reset_database(token):
+    if not Config.ADMIN_TOKEN or not hmac.compare_digest(token or "", Config.ADMIN_TOKEN):
+        raise ForbiddenError("Endpoint administrativo desabilitado")               # 403
+    # fixed DELETE statements only, in one transaction
+```
+The destructive operation is off by default (no token configured → 403).
 
 ---
 
@@ -139,7 +150,23 @@ def create_order(payload):
     notification_service.order_created(order)
     return order
 ```
-Wire up existing-but-unused services/helpers instead of duplicating them.
+Wire up existing-but-unused services/helpers instead of duplicating them:
+```python
+# before: services/notification_service.py and utils/helpers.process_task_data
+#         exist, but grep finds zero callers; the route re-implements validation.
+# after — controllers/task_controller.py
+from utils.helpers import process_task_data
+
+def create_task(data):
+    fields = process_task_data(data)                 # the ONE validation path
+    task = Task(**fields); db.session.add(task); db.session.commit()
+    if task.user:                                    # the service is now called
+        current_app.extensions["notification_service"].notify_task_assigned(task.user, task)
+    return task.to_dict()
+```
+**Verify before marking resolved:** `grep -rn "process_task_data\|notify_task_assigned"`
+must show a call site in a controller, not only the definition. If something
+has no sensible caller, delete it instead — and say so in the ledger.
 
 ---
 

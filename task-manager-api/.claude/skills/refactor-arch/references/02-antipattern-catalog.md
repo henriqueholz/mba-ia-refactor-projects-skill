@@ -99,6 +99,9 @@ routes *and* an unused helper; model methods (`validate_*`, `is_overdue`)
 defined but bypassed.
 Why: dead abstractions + duplicated logic drift out of sync.
 Fix: route → controller/service → model; delete or wire the dead code (PB-07).
+Resolution check: every dead symbol named in the finding must end up with a
+live call site (route → controller → symbol) **or** be deleted. Grep for it
+after the refactor; a definition with zero callers means the finding is still open.
 
 ### AP-ARCH-06 · No transaction / broken data integrity — HIGH
 Signals: multi-statement writes (create order + items + stock update) with no
@@ -156,7 +159,9 @@ modern equivalent. Common ones:
 | `app.run(debug=True)` as prod server | Flask | WSGI server (gunicorn/uwsgi) |
 | `datetime.strptime` w/o tz for "now" comparisons | Python | tz-aware datetimes |
 
-Signal: grep for the left-column tokens. Report file:line and the replacement.
+Signal: grep for the left-column tokens across the WHOLE project (seed
+scripts, helpers and services included) — both when auditing and when checking
+the fix. Report file:line and the replacement.
 If the stack has **no** deprecated APIs, say "No deprecated APIs detected" in the
 report rather than omitting the check.
 
@@ -182,6 +187,15 @@ Ad-hoc prints for app events. Fix: a logger, or at least centralized.
 ### AP-LOW-05 · Duplicated code blocks — LOW→MEDIUM
 Same serialization/overdue/validation logic copy-pasted 3+ times. Fix: extract
 one helper/method (raise to MEDIUM if it's business logic).
+
+### AP-LOW-06 · Misplaced endpoint ownership — LOW
+Routes registered in a module/blueprint that belongs to another domain (e.g.
+`/categories` CRUD inside `report_routes`). Fix: move to its own route module.
+
+### AP-LOW-07 · Placeholder security artifact — LOW (HIGH if it guards real data)
+Fake/stub auth pieces presented as real: `'fake-jwt-token-' + id`, hardcoded
+`isAdmin = true`, "TODO: validate token". Fix: implement for real, or keep for
+compatibility but flag it clearly in code and docs.
 
 ---
 

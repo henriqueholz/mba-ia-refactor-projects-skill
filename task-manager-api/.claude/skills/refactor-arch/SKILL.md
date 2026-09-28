@@ -33,6 +33,9 @@ apply the same universal principles.
    restructuring that reaches clean MVC — don't churn code that is already fine.
 5. **Cite evidence.** Every finding needs a concrete `file:line` and a
    detection signal, never a vague "bad code".
+6. **"Resolved" must be proven.** A finding counts as fixed only after every
+   part of its recommendation is verified in the refactored code (Phase 3,
+   step 5). Saying a service is "wired" when nothing calls it is a false report.
 
 ## Reference files (load as needed — do not dump them to the user)
 
@@ -133,8 +136,29 @@ src/
    - Install deps if needed (in an isolated venv / `npm install`).
    - Boot the app; confirm it starts with no errors.
    - Hit the original endpoints (curl / test client) and confirm they respond
-     equivalently. Fix anything that broke before declaring success.
-5. Print the completion summary:
+     equivalently — same paths, methods, status codes and error messages.
+     Fix anything that broke before declaring success.
+5. **Verify every finding against its recommendation** — mandatory before any
+   finding is counted as resolved. A recommendation often has several parts
+   ("move X to config AND wire the service AND delete the duplicate"); each
+   part is checked separately, with evidence from the code *after* the
+   refactor, never from memory of what you intended to do:
+   - **"Wire / connect / use X"** → grep for call sites of X. It is wired only
+     if at least one call is reachable from a request path (route → controller
+     → X). A definition with zero callers is still dead code.
+   - **"Remove / delete X"** → grep shows X no longer exists.
+   - **"Replace deprecated API X"** → grep the WHOLE project (including seed
+     scripts, helpers, services, not only the files listed in the finding)
+     for the old token; zero hits.
+   - **"Centralize / single source of truth"** → grep shows one definition
+     and every former copy now calls it.
+   - **Security fixes** → exercise the endpoint and check the response/log no
+     longer contains the secret, or the dangerous call is refused.
+   Record the result in the ledger below. A finding is **Resolved** only when
+   every part passes; otherwise it is **Partial** or **Open** — go back and
+   finish it, or report it as such. Never claim `N/N resolved` without the
+   ledger backing it.
+6. Print the completion summary:
 
 ```
 ================================
@@ -146,12 +170,19 @@ PHASE 3: REFACTORING COMPLETE
 ## Validation
   ✓ Application boots without errors
   ✓ Endpoints respond correctly (<list a few checked>)
-  ✓ Anti-patterns resolved: <count>/<total>
+  ✓ Anti-patterns resolved: <count>/<total> (per the ledger below)
+
+## Resolution ledger
+| # | Finding | Recommendation part | Evidence (after refactor) | Status |
+| - | ------- | ------------------- | ------------------------- | ------ |
+| 1 | <title> | <part 1>            | <grep hit / call site / response> | Resolved |
+| 1 | <title> | <part 2>            | <...>                     | Resolved |
 ================================
 ```
 
-If any anti-pattern was intentionally left (e.g. out of scope), say so
-explicitly rather than silently skipping it.
+Append the Phase-3 summary and ledger to the same `reports/audit-project-N.md`.
+If any anti-pattern was intentionally left (e.g. out of scope), mark it
+**Open** with the reason rather than silently skipping it.
 
 ---
 
@@ -160,7 +191,9 @@ explicitly rather than silently skipping it.
 - **Monolith (everything in a few files):** full split into all MVC layers.
 - **Partially layered (models/routes already exist):** keep what's good; focus
   on fat controllers, missing service/controller layer, security, N+1, dead
-  code, and deprecated APIs. Don't restructure for its own sake.
+  code, and deprecated APIs. Don't restructure for its own sake. Existing but
+  unused services/helpers must end up either **called from a controller** or
+  **deleted** — never left in place while the report claims they are wired.
 - **Different language:** the layer *names* may differ (`views` vs `routes`,
   `controllers` vs `services`) but the responsibilities in
   `04-mvc-architecture-guidelines.md` are universal. Map them onto the stack's
