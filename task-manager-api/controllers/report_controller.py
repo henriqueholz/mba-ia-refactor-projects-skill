@@ -11,16 +11,9 @@ from models.category import Category
 from models.task import Task
 from models.user import User
 from utils.dates import utc_now
+from utils.helpers import calculate_percentage
 
 PRIORITY_LABELS = {1: 'critical', 2: 'high', 3: 'medium', 4: 'low', 5: 'minimal'}
-
-
-def _overdue_query():
-    return Task.query.filter(
-        Task.due_date.isnot(None),
-        Task.due_date < utc_now(),
-        Task.status.notin_(['done', 'cancelled']),
-    )
 
 
 def summary_report():
@@ -30,7 +23,7 @@ def summary_report():
     by_status = dict(db.session.query(Task.status, func.count()).group_by(Task.status).all())
     by_priority = dict(db.session.query(Task.priority, func.count()).group_by(Task.priority).all())
 
-    overdue_tasks = _overdue_query().all()
+    overdue_tasks = Task.query.filter(Task.overdue_clause()).all()
     overdue_list = [
         {
             'id': t.id,
@@ -59,7 +52,7 @@ def summary_report():
                 'user_name': u.name,
                 'total_tasks': total,
                 'completed_tasks': completed,
-                'completion_rate': round((completed / total) * 100, 2) if total > 0 else 0,
+                'completion_rate': calculate_percentage(completed, total),
             }
         )
 
@@ -113,6 +106,6 @@ def user_report(user_id):
             **counts,
             'overdue': overdue,
             'high_priority': high_priority,
-            'completion_rate': round((counts['done'] / total) * 100, 2) if total > 0 else 0,
+            'completion_rate': calculate_percentage(counts['done'], total),
         },
     }

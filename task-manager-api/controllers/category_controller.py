@@ -5,6 +5,7 @@ from database import db
 from errors import NotFoundError, ValidationError
 from models.category import Category
 from models.task import Task
+from utils.helpers import DEFAULT_COLOR
 
 
 def list_categories():
@@ -30,7 +31,7 @@ def create_category(data):
     category = Category()
     category.name = name
     category.description = data.get('description', '')
-    category.color = data.get('color', '#000000')
+    category.color = data.get('color', DEFAULT_COLOR)
     db.session.add(category)
     db.session.commit()
     return category.to_dict()

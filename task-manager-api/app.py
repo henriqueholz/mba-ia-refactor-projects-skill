@@ -14,6 +14,7 @@ from routes.category_routes import category_bp
 from routes.report_routes import report_bp
 from routes.task_routes import task_bp
 from routes.user_routes import user_bp
+from services.notification_service import NotificationService
 from utils.dates import utc_now
 
 
@@ -24,6 +25,8 @@ def create_app(config=Config):
     CORS(app)
     logging.basicConfig(level=logging.INFO)
     db.init_app(app)
+    # One NotificationService per app, used by task_controller on assignment.
+    app.extensions['notification_service'] = NotificationService()
 
     app.register_blueprint(task_bp)
     app.register_blueprint(user_bp)

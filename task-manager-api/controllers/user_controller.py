@@ -1,15 +1,11 @@
 """User/auth business logic."""
-import re
-
 from sqlalchemy import func
 
 from database import db
 from errors import AuthError, NotFoundError, ValidationError
 from models.task import Task
 from models.user import User
-from utils.helpers import VALID_ROLES, MIN_PASSWORD_LENGTH
-
-EMAIL_RE = re.compile(r'^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$')
+from utils.helpers import MIN_PASSWORD_LENGTH, VALID_ROLES, validate_email
 
 
 def list_users():
@@ -53,7 +49,7 @@ def create_user(data):
         raise ValidationError('Email é obrigatório')
     if not password:
         raise ValidationError('Senha é obrigatória')
-    if not EMAIL_RE.match(email):
+    if not validate_email(email):
         raise ValidationError('Email inválido')
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValidationError('Senha deve ter no mínimo 4 caracteres')
@@ -82,7 +78,7 @@ def update_user(user_id, data):
     if 'name' in data:
         user.name = data['name']
     if 'email' in data:
-        if not EMAIL_RE.match(data['email']):
+        if not validate_email(data['email']):
             raise ValidationError('Email inválido')
         existing = User.query.filter_by(email=data['email']).first()
         if existing and existing.id != user_id:
@@ -131,5 +127,7 @@ def login(data):
     return {
         'message': 'Login realizado com sucesso',
         'user': user.to_dict(),
+        # Placeholder token kept for API compatibility; NOT a signed JWT.
+        # Replace with a real signed token (e.g. PyJWT) before production use.
         'token': 'fake-jwt-token-' + str(user.id),
     }

@@ -1,6 +1,8 @@
 from database import db
 from utils.dates import utc_now
 
+CLOSED_STATUSES = ('done', 'cancelled')
+
 
 class Task(db.Model):
     __tablename__ = 'tasks'
@@ -41,4 +43,14 @@ class Task(db.Model):
         # block was duplicated across 5+ handlers).
         if not self.due_date:
             return False
-        return self.due_date < utc_now() and self.status not in ('done', 'cancelled')
+        return self.due_date < utc_now() and self.status not in CLOSED_STATUSES
+
+    @classmethod
+    def overdue_clause(cls):
+        # SQL form of is_overdue(), so reports/stats filter in the database
+        # without re-stating the rule.
+        return db.and_(
+            cls.due_date.isnot(None),
+            cls.due_date < utc_now(),
+            cls.status.notin_(CLOSED_STATUSES),
+        )
