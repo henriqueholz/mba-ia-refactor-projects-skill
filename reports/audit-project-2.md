@@ -20,7 +20,7 @@ Files:   3 analyzed | ~180 lines of code
 Date:    2026-09-15
 
 ## Summary
-CRITICAL: 3 | HIGH: 4 | MEDIUM: 3 | LOW: 3
+CRITICAL: 4 | HIGH: 3 | MEDIUM: 3 | LOW: 3
 Total: 13 findings
 
 ## Findings
@@ -51,7 +51,7 @@ created with it (AppManager.js:68).
 Impact: Trivial credential compromise.
 Recommendation: Salted KDF (bcrypt / Node `crypto.scrypt`) (PB-03).
 
-### [HIGH] God Class — AppManager · AP-ARCH-01
+### [CRITICAL] God Class — AppManager · AP-ARCH-01
 File: AppManager.js:1-141
 Description: A single class owns the DB connection, schema, seeds, all route
 definitions, and all business logic for four domains.

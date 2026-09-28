@@ -39,7 +39,7 @@ Monólito de 4 arquivos (~780 linhas), sem separação de camadas.
 | 3 | **CRITICAL** | `/admin/reset-db` apaga todas as tabelas sem proteção | `app.py:47-57` | Perda total de dados por qualquer anônimo |
 | 4 | **CRITICAL** | Senhas em texto puro (armazenadas, comparadas e retornadas em `GET /usuarios`) | `models.py:83,110,127` | Comprometimento total de credenciais |
 | 5 | **CRITICAL** | `SECRET_KEY` hardcoded e vazada no `/health` | `app.py:7`, `controllers.py:289` | Forja de sessão; segredo não rotacionável |
-| 6 | **HIGH** | God Module: 4 domínios + SQL + lógica + validação num arquivo | `models.py:1-314` | Impossível testar isolado; SRP violado |
+| 6 | **CRITICAL** | God Module: 4 domínios + SQL + lógica + validação num arquivo | `models.py:1-314` | Impossível testar isolado; SRP violado |
 | 7 | **HIGH** | Conexão global mutável compartilhada entre threads | `database.py:4-10` | Race conditions; acoplamento oculto |
 | 8 | **HIGH** | Lógica de negócio e notificações dentro dos controllers | `controllers.py:208-210`, `models.py:235-273` | Fat controller; regra no lugar errado |
 | 9 | **HIGH** | `DEBUG=True` em "produção" | `app.py:8` | Debugger interativo exploitável |
@@ -58,7 +58,7 @@ God class `AppManager` + globals mutáveis em `utils.js` (~180 linhas).
 | 1 | **CRITICAL** | Credenciais/segredos hardcoded (`dbPass`, `paymentGatewayKey`) | `utils.js:1-7` | Chave de pagamento *live* no código |
 | 2 | **CRITICAL** | Número do cartão e chave do gateway logados no console | `AppManager.js:45` | Violação de PCI; segredos nos logs |
 | 3 | **CRITICAL** | "Criptografia" caseira (`badCrypto`) para senhas | `utils.js:17-23` | Hash reversível/inútil |
-| 4 | **HIGH** | God Class `AppManager` (DB + rotas + lógica) | `AppManager.js:1-141` | Intestável; SRP violado |
+| 4 | **CRITICAL** | God Class `AppManager` (DB + rotas + lógica) | `AppManager.js:1-141` | Intestável; SRP violado |
 | 5 | **HIGH** | Callback hell (checkout com 5 níveis de aninhamento) | `AppManager.js:37-77` | Frágil, ilegível |
 | 6 | **HIGH** | Sem transação no checkout; `DELETE user` deixa órfãos | `AppManager.js:50-63,131-137` | Dados corrompidos/parciais |
 | 7 | **HIGH** | Estado global mutável (`globalCache`, `totalRevenue`) | `utils.js:9-10` | Acoplamento oculto |
@@ -108,6 +108,11 @@ lógica presa nas rotas e `services/` nunca usado (~1150 linhas).
   antes de qualquer escrita.
 - **Validação obrigatória** na Fase 3: subir a aplicação + exercitar os endpoints
   originais; regressões são corrigidas antes de declarar sucesso.
+- **Ledger de resolução com evidência** na Fase 3: cada *parte* da recomendação
+  de cada finding é conferida no código já refatorado (grep de call sites,
+  grep do token deprecated no projeto inteiro, resposta do endpoint). Um
+  finding só conta como resolvido quando todas as partes passam — nada de
+  "N/N resolvidos" sem prova.
 
 ### Anti-patterns incluídos (e por quê)
 O catálogo tem **20+ anti-patterns** cobrindo as 4 severidades, agrupados em:
@@ -141,9 +146,25 @@ desestruturado a projeto parcialmente organizado.
 - **Preservar o contrato dos endpoints** enquanto se troca o hashing de senha:
   mantive as assinaturas `set_password`/`check_password` e re-seedei os usuários
   já com hash, então o login continua funcionando.
-- **Remoção de endpoints perigosos** (`/admin/query`, `/admin/reset-db`): são
-  CRITICAL e o playbook manda removê-los; documentei a remoção explicitamente em
-  vez de silenciá-la.
+- **Endpoints perigosos** (`/admin/query`, `/admin/reset-db`): são CRITICAL,
+  mas removê-los quebraria o contrato ("endpoints originais respondem"). A
+  solução foi manter as rotas de forma segura: `/admin/query` responde **410
+  Gone** e nunca executa SQL; `/admin/reset-db` responde **403** a menos que
+  `ADMIN_TOKEN` esteja configurado e seja enviado em `X-Admin-Token`, e então
+  executa só DELETEs fixos numa transação.
+- **Feedback da revisão (Projeto 3): "wired" sem nenhuma chamada.** O relatório
+  da 1ª execução dizia que o `NotificationService` estava conectado e fechava
+  em 14/14, mas ele e o `process_task_data` continuavam sem nenhuma chamada. A
+  causa foi a Fase 3 resumir o que *pretendia* fazer, e não o que o código
+  mostrava. Correção na skill: (1) regra de ouro nº 6 ("resolvido precisa ser
+  provado"); (2) passo 5 da Fase 3 com o checklist de verificação por tipo de
+  recomendação (wire → call site alcançável; remove → grep vazio; deprecated →
+  grep no projeto inteiro, incluindo seeds/helpers); (3) ledger obrigatório no
+  relatório; (4) catálogo `AP-ARCH-05` e playbook `PB-07` com exemplo concreto
+  de "wiring". A skill foi executada de novo no Projeto 3 (Run 2 em
+  `reports/audit-project-3.md`): achou 10 pendências (entre elas as duas
+  apontadas, `utcnow()` no `seed.py`, `except:` nu nos helpers e uma mensagem
+  de erro do `PUT /tasks` que tinha mudado) e fechou todas com evidência.
 - **Projeto 3 já organizado:** em vez de forçar tudo para dentro de `src/`,
   mantive `models/routes/services/utils` e *adicionei* as camadas que faltavam
   (`config/`, `controllers/`, `middlewares/`) — demonstrando adaptação ao
@@ -157,9 +178,13 @@ desestruturado a projeto parcialmente organizado.
 
 | Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW | Total |
 |---|---|:-:|:-:|:-:|:-:|:-:|
-| 1 · code-smells-project | Python/Flask | 5 | 4 | 3 | 3 | **15** |
-| 2 · ecommerce-api-legacy | Node.js/Express | 3 | 4 | 3 | 3 | **13** |
-| 3 · task-manager-api | Python/Flask | 2 | 4 | 4 | 4 | **14** |
+| 1 · code-smells-project | Python/Flask | 6 | 3 | 3 | 3 | **15** |
+| 2 · ecommerce-api-legacy | Node.js/Express | 4 | 3 | 3 | 3 | **13** |
+| 3 · task-manager-api (Run 1) | Python/Flask | 2 | 4 | 4 | 4 | **14** |
+| 3 · task-manager-api (Run 2, re-auditoria) | Python/Flask | 0 | 2 | 4 | 4 | **10** |
+
+No Projeto 3, o Run 2 audita o código depois do Run 1 e lista o que ficou
+pendente. O ledger final fecha os 24 findings com evidência.
 
 Detecção de **APIs deprecated**: Projeto 2 (driver sqlite3 callback-based) e
 Projeto 3 (`datetime.utcnow()`, `Query.get()`, MD5) — todas substituídas.
@@ -180,7 +205,8 @@ Depois: src/{config,database,models,controllers,routes,services,middlewares}/ + 
 ```
 Antes:  models/ routes/ services/(morto) utils/ app.py   (lógica nas rotas)
 Depois: + config/ + controllers/ + middlewares/ + utils/dates.py + errors.py
-        (rotas finas; services wired; categorias em blueprint próprio)
+        (rotas finas; NotificationService chamado pelo task_controller;
+         process_task_data como único validador; categorias em blueprint próprio)
 ```
 
 ### Checklist de Validação (preenchido para os 3 projetos)
@@ -221,6 +247,8 @@ SERVIDOR INICIADO — http://localhost:5000
 GET /health -> {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"connected","status":"ok"}
 21/21 checks passed  (produtos, usuarios, login, pedidos, relatorios, health)
   ✓ no password leak in /usuarios     ✓ no secret_key in /health
+  ✓ POST /admin/query -> 410 (SQL nunca executado)
+  ✓ POST /admin/reset-db -> 403 sem token / 200 com X-Admin-Token válido
 ```
 **Projeto 2 — `node src/app.js` + 7 checks:**
 ```
@@ -229,11 +257,16 @@ GET /health -> {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"co
   ✓ GET /api/admin/financial-report (JOIN, revenue presente)
   ✓ DELETE /api/users/:id (cascade, sem órfãos)
 ```
-**Projeto 3 — `flask --app app run` + 24 checks:**
+**Projeto 3 — `flask --app app run` + 39 checks (Run 2, com DeprecationWarning → erro):**
 ```
-24/24 checks passed  (tasks, users, categories, reports, auth, health)
-  ✓ passwords not MD5 (werkzeug scrypt)
-  ✓ N+1 removido (eager loading + grouped aggregates)
+ * Debug mode: off
+GET /health -> {"status":"ok", ...}
+39/39 checks passed  (tasks CRUD/search/stats, users CRUD, login, reports, categories CRUD)
+  ✓ create with user_id notifies (NotificationService wired)
+  ✓ reassign notifies / update sem reatribuição não notifica
+  ✓ mensagens de validação originais (POST e PUT /tasks)
+  ✓ POST non-int priority -> 400 (antes 500)
+pyflakes: limpo
 ```
 
 ### Observações sobre stacks diferentes

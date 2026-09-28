@@ -19,7 +19,7 @@ Files:   4 analyzed | ~780 lines of code
 Date:    2026-09-15
 
 ## Summary
-CRITICAL: 5 | HIGH: 4 | MEDIUM: 3 | LOW: 3
+CRITICAL: 6 | HIGH: 3 | MEDIUM: 3 | LOW: 3
 Total: 15 findings
 
 ## Findings
@@ -39,14 +39,15 @@ File: app.py:59-78
 Description: `POST /admin/query` executes whatever SQL string is in the request
 body, with no authentication.
 Impact: Remote-code-equivalent — full read/write/drop of the database by anyone.
-Recommendation: Delete the endpoint entirely (PB-05).
+Recommendation: Never execute client SQL. Keep the route only so the contract
+still answers, returning 410 Gone (PB-05).
 
 ### [CRITICAL] Unprotected destructive endpoint · AP-SEC-05
 File: app.py:47-57
 Description: `POST /admin/reset-db` wipes all four tables with no auth or guard.
 Impact: Total data loss triggerable by any anonymous caller.
-Recommendation: Remove; if a reset is truly needed, gate behind auth + fixed,
-non-arbitrary operations (PB-05).
+Recommendation: Gate behind an admin token from config (disabled → 403 by
+default), fixed DELETE statements only, in one transaction (PB-05).
 
 ### [CRITICAL] Plaintext passwords (stored, compared & exposed) · AP-SEC-03 / AP-SEC-04
 File: models.py:83, 99, 110-111, 122-131; controllers.py:132
@@ -65,7 +66,7 @@ Impact: Session forgery; secret cannot be rotated; leaked to every health caller
 Recommendation: Move to env/config module; strip secrets from all responses
 (PB-01, PB-04).
 
-### [HIGH] God Module — models.py · AP-ARCH-01 / AP-ARCH-03
+### [CRITICAL] God Module — models.py · AP-ARCH-01 / AP-ARCH-03
 File: models.py:1-314
 Description: One 314-line file holds persistence, business logic (sales report,
 discount tiers), validation, and formatting for four different domains.
@@ -145,7 +146,8 @@ access), `controllers/*_controller.py` (validation + business logic + report),
 `views/*_views.py` (thin Flask blueprints), `middlewares/error_handler.py`
 (central errors), `services/notification_service.py`, and `app.py` as the
 composition root (app factory + per-request DB). Dangerous admin endpoints
-removed.
+neutralised: `/admin/query` → 410 Gone, `/admin/reset-db` → 403 unless
+`ADMIN_TOKEN` is configured and sent in `X-Admin-Token`.
 
 ================================
 Total: 15 findings
@@ -188,6 +190,7 @@ src/
   ✓ Order creation is transactional; order listing is N+1-free
   ✓ Passwords hashed; no password field leaked in /usuarios
   ✓ No secret_key leaked in /health
-  ✓ Anti-patterns resolved: 15/15 (dangerous /admin/query and /admin/reset-db
-    endpoints removed by design)
+  ✓ /admin/query → 410 (no SQL executed); /admin/reset-db → 403 without a
+    valid X-Admin-Token, 200 with it (fixed DELETEs in one transaction)
+  ✓ Anti-patterns resolved: 15/15
 ================================
