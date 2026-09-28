@@ -14,6 +14,10 @@ class Config:
     # Debug defaults to OFF (production-safe). Enable explicitly for local dev.
     DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
 
+    # Admin endpoints are disabled unless a token is configured. Callers must
+    # send it in the X-Admin-Token header (fixes AP-SEC-05).
+    ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+
     # Persistence
     DB_PATH = os.environ.get("DB_PATH", "loja.db")
 

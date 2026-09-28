@@ -1,5 +1,5 @@
 """Root and health endpoints."""
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from src.controllers import system_controller
 
@@ -27,3 +27,13 @@ def index():
 @system_bp.get("/health")
 def health():
     return jsonify(system_controller.health()), 200
+
+
+@system_bp.post("/admin/reset-db")
+def reset_database():
+    return jsonify(system_controller.reset_database(request.headers.get("X-Admin-Token"))), 200
+
+
+@system_bp.post("/admin/query")
+def executar_query():
+    return jsonify(system_controller.execute_query()), 200

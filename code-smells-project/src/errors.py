@@ -23,3 +23,13 @@ class ValidationError(AppError):
 class AuthError(AppError):
     def __init__(self, message="Email ou senha inválidos"):
         super().__init__(message, status=401)
+
+
+class ForbiddenError(AppError):
+    def __init__(self, message="Acesso negado"):
+        super().__init__(message, status=403)
+
+
+class GoneError(AppError):
+    def __init__(self, message="Recurso removido"):
+        super().__init__(message, status=410)
